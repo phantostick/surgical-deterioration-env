@@ -4,7 +4,7 @@ Implements reset(), step(), and state() following OpenEnv spec.
 """
 
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from models import (
     AgentAction, ActionType, DeteriorationStage,
@@ -13,10 +13,6 @@ from models import (
 )
 from simulation import generate_patient, advance_patient
 
-
-# ---------------------------------------------------------------------------
-# Task configurations
-# ---------------------------------------------------------------------------
 
 TASK_CONFIGS = {
     "task1_single_patient_escalation": {
@@ -46,37 +42,32 @@ TASK_CONFIGS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Environment class
-# ---------------------------------------------------------------------------
-
 class SurgicalDeteriorationEnv:
 
     def __init__(self):
         self._reset_internal()
 
     def _reset_internal(self):
-        self.task_id: str = "task1_single_patient_escalation"
-        self.seed: int = 42
-        self.step_count: int = 0
-        self.max_steps: int = 8
-        self.done: bool = False
-        self.total_reward: float = 0.0
+        self.task_id = "task1_single_patient_escalation"
+        self.seed = 42
+        self.step_count = 0
+        self.max_steps = 8
+        self.done = False
+        self.total_reward = 0.0
         self.patients: List[PatientInfo] = []
         self.hidden_states: List[dict] = []
-        self.rng: random.Random = random.Random(42)
-        self.rapid_response_cooldown: int = 0
-        self.rapid_response_cooldown_steps: int = 0
-        self.false_alarm_count: int = 0
-        self.credibility_score: float = 1.0
-        self.lives_saved: int = 0
-        self.deteriorations_caught_early: int = 0
-        self.patients_coded: int = 0
+        self.rng = random.Random(42)
+        self.rapid_response_cooldown = 0
+        self.rapid_response_cooldown_steps = 0
+        self.false_alarm_count = 0
+        self.credibility_score = 1.0
+        self.lives_saved = 0
+        self.deteriorations_caught_early = 0
+        self.patients_coded = 0
         self.trajectory: List[dict] = []
 
     def reset(self, request: ResetRequest) -> WardObservation:
         self._reset_internal()
-
         self.task_id = request.task_id
         self.seed = request.seed
         self.rng = random.Random(request.seed)
@@ -93,19 +84,17 @@ class SurgicalDeteriorationEnv:
         det_speeds = config["deterioration_speeds"]
 
         deteriorating_indices = self.rng.sample(range(n_patients), n_deteriorating)
-
-        det_speed_map = {}
-        for i, idx in enumerate(deteriorating_indices):
-            det_speed_map[idx] = det_speeds[i] if i < len(det_speeds) else 1.0
+        det_speed_map = {
+            idx: det_speeds[i] if i < len(det_speeds) else 1.0
+            for i, idx in enumerate(deteriorating_indices)
+        }
 
         for pid in range(n_patients):
-            is_det = pid in deteriorating_indices
-            speed = det_speed_map.get(pid, 1.0)
             patient, hidden = generate_patient(
                 patient_id=pid,
                 rng=self.rng,
-                deteriorating=is_det,
-                deterioration_speed=speed
+                deteriorating=pid in deteriorating_indices,
+                deterioration_speed=det_speed_map.get(pid, 1.0)
             )
             self.patients.append(patient)
             self.hidden_states.append(hidden)
@@ -121,17 +110,17 @@ class SurgicalDeteriorationEnv:
             raise ValueError(f"Invalid patient_id: {patient_id}")
 
         action_type = action.action
-        if action_type == ActionType.RAPID_RESPONSE:
-            if self.rapid_response_cooldown_steps > 0:
-                action_type = ActionType.CALL_DOCTOR
+        if action_type == ActionType.RAPID_RESPONSE and self.rapid_response_cooldown_steps > 0:
+            action_type = ActionType.CALL_DOCTOR
+
+        # Snapshot hidden states BEFORE advancing (fix false alarm race condition)
+        pre_action_hidden = {i: dict(h) for i, h in enumerate(self.hidden_states)}
 
         step_total_reward = 0.0
         any_coded = False
 
         for i, patient in enumerate(self.patients):
             act = action_type if i == patient_id else ActionType.MONITOR
-
-            # Track escalation state BEFORE advance
             was_escalated_before = patient.escalated
 
             updated, new_hidden, reward, coded = advance_patient(
@@ -149,17 +138,16 @@ class SurgicalDeteriorationEnv:
                 self.patients_coded += 1
                 any_coded = True
 
-            # Fix: use was_escalated_before to correctly track new escalations
+            # Fix: use was_escalated_before for correct lives_saved tracking
             if new_hidden.get("already_escalated") and not was_escalated_before:
-                # Only count as saved if rapid_response halted deterioration
                 if new_hidden.get("deteriorating") is False:
                     self.deteriorations_caught_early += 1
                     self.lives_saved += 1
 
-        # False alarm tracking
+        # Fix: use pre-action snapshot for false alarm check
         if action_type == ActionType.RAPID_RESPONSE:
-            target_hidden = self.hidden_states[patient_id]
-            if not target_hidden["deteriorating"] and not target_hidden.get("already_escalated"):
+            snapshot = pre_action_hidden[patient_id]
+            if not snapshot["deteriorating"] and not snapshot.get("already_escalated"):
                 self.false_alarm_count += 1
                 self.credibility_score = max(0.1, self.credibility_score - 0.15)
                 step_total_reward -= 0.2
@@ -186,9 +174,8 @@ class SurgicalDeteriorationEnv:
 
         self.done = self.step_count >= self.max_steps
 
-        obs = self._build_observation()
         return StepResult(
-            observation=obs,
+            observation=self._build_observation(),
             reward=step_total_reward,
             done=self.done,
             truncated=self.done and not any_coded,
@@ -215,31 +202,23 @@ class SurgicalDeteriorationEnv:
         )
 
     def grade(self) -> GraderResult:
-        task = self.task_id
-        if task == "task1_single_patient_escalation":
+        if self.task_id == "task1_single_patient_escalation":
             return self._grade_task1()
-        elif task == "task2_subtle_deterioration":
+        elif self.task_id == "task2_subtle_deterioration":
             return self._grade_task2()
-        elif task == "task3_ward_triage":
+        elif self.task_id == "task3_ward_triage":
             return self._grade_task3()
         else:
-            raise ValueError(f"No grader for task: {task}")
-
-    # -----------------------------------------------------------------------
-    # Graders
-    # -----------------------------------------------------------------------
+            raise ValueError(f"No grader for task: {self.task_id}")
 
     def _grade_task1(self) -> GraderResult:
-        patient = self.patients[0]
         hidden = self.hidden_states[0]
-
         escalated = hidden.get("already_escalated", False)
         coded = hidden.get("coded", False)
 
         escalation_step = None
         for t in self.trajectory:
-            act = t["action"]["action"]
-            if act in ["call_doctor", "rapid_response"]:
+            if t["action"]["action"] in ["call_doctor", "rapid_response"]:
                 escalation_step = t["step"]
                 break
 
@@ -251,28 +230,29 @@ class SurgicalDeteriorationEnv:
         else:
             base_score = 0.1
 
-        false_alarm_penalty = self.false_alarm_count * 0.1
-        score = max(0.0, min(1.0, base_score - false_alarm_penalty))
+        score = max(0.0, min(1.0, base_score - self.false_alarm_count * 0.1))
 
         return GraderResult(
             task_id=self.task_id,
             score=round(score, 4),
             breakdown={
                 "base_score": base_score,
-                "false_alarm_penalty": false_alarm_penalty,
+                "false_alarm_penalty": self.false_alarm_count * 0.1,
                 "escalated": float(escalated),
                 "patient_coded": float(coded),
                 "escalation_step": float(escalation_step or -1)
             },
             explanation=(
-                f"Patient {'coded (missed)' if coded else 'escalated' if escalated else 'not escalated'}. "
+                f"Patient {'coded' if coded else 'escalated' if escalated else 'not escalated'}. "
                 f"Escalation at step {escalation_step}. False alarms: {self.false_alarm_count}."
             )
         )
 
     def _grade_task2(self) -> GraderResult:
+        # Fix: use actual deteriorating flag, not fragile severity_score threshold
         det_idx = next(
-            (i for i, h in enumerate(self.hidden_states) if h.get("severity_score", 0) > 0.3),
+            (i for i, h in enumerate(self.hidden_states)
+             if h.get("deteriorating") or h.get("already_escalated") or h.get("coded")),
             None
         )
 
@@ -314,7 +294,7 @@ class SurgicalDeteriorationEnv:
                 "wrong_escalations": float(wrong_escalations)
             },
             explanation=(
-                f"Deteriorating patient was patient {det_idx}. "
+                f"Deteriorating patient was {det_idx}. "
                 f"Correct escalation: {correct_escalation} at step {escalation_step}. "
                 f"Wrong escalations: {wrong_escalations}."
             )
@@ -322,10 +302,7 @@ class SurgicalDeteriorationEnv:
 
     def _grade_task3(self) -> GraderResult:
         n_det = sum(1 for h in self.hidden_states if h.get("severity_score", 0) > 0.5)
-        n_saved = self.lives_saved
-        n_coded = self.patients_coded
-
-        lives_ratio = (n_saved / max(1, n_det))
+        lives_ratio = self.lives_saved / max(1, n_det)
         false_alarm_rate = self.false_alarm_count / max(1, self.step_count)
         early_bonus = self.deteriorations_caught_early / max(1, n_det)
 
@@ -334,9 +311,7 @@ class SurgicalDeteriorationEnv:
             0.3 * (1.0 - min(1.0, false_alarm_rate * 5)) +
             0.3 * early_bonus
         )
-
-        coded_penalty = n_coded * 0.2
-        score = max(0.0, min(1.0, raw_score - coded_penalty))
+        score = max(0.0, min(1.0, raw_score - self.patients_coded * 0.2))
 
         return GraderResult(
             task_id=self.task_id,
@@ -345,27 +320,20 @@ class SurgicalDeteriorationEnv:
                 "lives_ratio": lives_ratio,
                 "false_alarm_rate": false_alarm_rate,
                 "early_bonus": early_bonus,
-                "coded_penalty": coded_penalty,
+                "coded_penalty": self.patients_coded * 0.2,
                 "raw_score": raw_score
             },
             explanation=(
-                f"Deteriorating patients: {n_det}. Saved: {n_saved}. Coded: {n_coded}. "
-                f"False alarms: {self.false_alarm_count}. Early catches: {self.deteriorations_caught_early}."
+                f"Deteriorating: {n_det}. Saved: {self.lives_saved}. "
+                f"Coded: {self.patients_coded}. False alarms: {self.false_alarm_count}."
             )
         )
 
-    # -----------------------------------------------------------------------
-    # Internal helpers
-    # -----------------------------------------------------------------------
-
     def _build_observation(self) -> WardObservation:
-        hours_per_step = 0.5
-        hours_remaining = (self.max_steps - self.step_count) * hours_per_step
-
         return WardObservation(
             patients=self.patients,
             step=self.step_count,
-            hours_remaining=hours_remaining,
+            hours_remaining=(self.max_steps - self.step_count) * 0.5,
             rapid_response_available=self.rapid_response_cooldown_steps == 0,
             rapid_response_cooldown_steps=self.rapid_response_cooldown_steps,
             false_alarm_count=self.false_alarm_count,

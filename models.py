@@ -163,3 +163,11 @@ class GraderResult(BaseModel):
         description="Score components"
     )
     explanation: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Reset response (includes session_id)
+# ---------------------------------------------------------------------------
+
+class ResetResponse(WardObservation):
+    session_id: str = Field(..., description="Session ID for subsequent calls")

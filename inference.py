@@ -35,7 +35,10 @@ TASKS = [
     "task3_ward_triage"
 ]
 
-SEEDS = [42, 123, 777]  # 3 seeds per task for variance check
+SEEDS = [42, 123, 777]
+
+# Global session ID — updated on each reset
+SESSION_ID = None
 
 
 # ---------------------------------------------------------------------------
@@ -43,29 +46,32 @@ SEEDS = [42, 123, 777]  # 3 seeds per task for variance check
 # ---------------------------------------------------------------------------
 
 def env_reset(task_id: str, seed: int) -> dict:
+    global SESSION_ID
     r = requests.post(f"{ENV_BASE_URL}/reset", json={"task_id": task_id, "seed": seed})
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    SESSION_ID = data.get("session_id", "default")
+    return data
 
 
 def env_step(patient_id: int, action: str) -> dict:
-    r = requests.post(f"{ENV_BASE_URL}/step", json={
-        "patient_id": patient_id,
-        "action": action,
-        "reasoning": ""
-    })
+    r = requests.post(
+        f"{ENV_BASE_URL}/step",
+        params={"session_id": SESSION_ID},
+        json={"patient_id": patient_id, "action": action, "reasoning": ""}
+    )
     r.raise_for_status()
     return r.json()
 
 
 def env_grade() -> dict:
-    r = requests.post(f"{ENV_BASE_URL}/grade")
+    r = requests.post(f"{ENV_BASE_URL}/grade", params={"session_id": SESSION_ID})
     r.raise_for_status()
     return r.json()
 
 
 def env_state() -> dict:
-    r = requests.get(f"{ENV_BASE_URL}/state")
+    r = requests.get(f"{ENV_BASE_URL}/state", params={"session_id": SESSION_ID})
     r.raise_for_status()
     return r.json()
 
@@ -136,14 +142,15 @@ def run_episode(task_id: str, seed: int) -> dict:
     obs = env_reset(task_id, seed)
     done = False
     steps = 0
-    max_steps = {"task1_single_patient_escalation": 8,
-                 "task2_subtle_deterioration": 24,
-                 "task3_ward_triage": 24}[task_id]
+    max_steps = {
+        "task1_single_patient_escalation": 8,
+        "task2_subtle_deterioration": 24,
+        "task3_ward_triage": 24
+    }[task_id]
 
     while not done and steps < max_steps:
         prompt = build_prompt(obs)
 
-        # LLM call
         try:
             response = client.chat.completions.create(
                 model=MODEL_NAME,
@@ -153,8 +160,6 @@ def run_episode(task_id: str, seed: int) -> dict:
             )
             raw = response.choices[0].message.content.strip()
 
-            # Parse JSON action
-            # Strip markdown code fences if present
             if "```" in raw:
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
@@ -163,12 +168,10 @@ def run_episode(task_id: str, seed: int) -> dict:
             patient_id = int(action_data["patient_id"])
             action = str(action_data["action"])
 
-            # Validate action
             valid_actions = ["monitor", "call_doctor", "rapid_response", "order_labs"]
             if action not in valid_actions:
                 action = "monitor"
 
-            # Clamp patient_id
             n_patients = len(obs["patients"])
             patient_id = max(0, min(n_patients - 1, patient_id))
 
@@ -177,16 +180,13 @@ def run_episode(task_id: str, seed: int) -> dict:
             patient_id = 0
             action = "monitor"
 
-        # Step environment
         result = env_step(patient_id, action)
         obs = result["observation"]
         done = result["done"]
         steps += 1
 
-        # Small delay to avoid rate limits
         time.sleep(0.3)
 
-    # Grade episode
     grade = env_grade()
     score = grade["score"]
     print(f"    Score: {score:.4f} | {grade['explanation']}")
@@ -235,7 +235,6 @@ def main():
     overall = sum(r["average"] for r in all_results.values()) / len(all_results)
     print(f"\nOverall average: {overall:.4f}")
 
-    # Save results
     output = {
         "model": MODEL_NAME,
         "api_base": API_BASE_URL,
