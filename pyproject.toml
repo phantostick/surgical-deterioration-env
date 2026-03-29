@@ -16,7 +16,11 @@ dependencies = [
     "requests==2.32.3",
     "numpy==1.26.4",
     "python-dotenv==1.0.1",
+    "openenv>=0.2.0",
 ]
+
+[project.scripts]
+server = "server.app:main"
 
 [project.urls]
 Homepage = "https://huggingface.co/spaces/SampathA/surgical-deterioration-env"
