@@ -83,7 +83,6 @@ Step reward:
   +0.02 monitor on stable patient
   -0.3  false rapid response (stable patient)
   -1.0  patient codes (missed deterioration)
-
 Episode score (0.0–1.0):
   Task 1: escalation timing + false alarm penalty
   Task 2: correct patient identified + early detection + false alarms
@@ -100,13 +99,10 @@ Episode score (0.0–1.0):
 # Clone repo
 git clone <your-repo-url>
 cd surgical_deterioration_env
-
 # Install dependencies
 pip install -r server/requirements.txt
-
 # Start environment server
 uvicorn server.app:app --host 0.0.0.0 --port 8000
-
 # In another terminal, run baseline
 export API_BASE_URL="https://api-inference.huggingface.co/v1"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
@@ -138,19 +134,16 @@ docker run -p 8000:8000 surgical-deterioration-env
 
 ```python
 import requests
-
 # Reset
 obs = requests.post("http://localhost:8000/reset", json={
     "task_id": "task1_single_patient_escalation",
     "seed": 42
 }).json()
-
 # Step
 result = requests.post("http://localhost:8000/step", json={
     "patient_id": 0,
     "action": "call_doctor"
 }).json()
-
 # Grade
 score = requests.post("http://localhost:8000/grade").json()
 print(score["score"])  # 0.0–1.0
