@@ -44,6 +44,16 @@ env = SurgicalDeteriorationEnv()
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/")
+def root():
+    return {
+        "name": "Surgical Deterioration Early Warning Environment",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": ["/health", "/reset", "/step", "/state", "/grade", "/tasks"]
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "environment": "surgical_deterioration_env", "version": "1.0.0"}
@@ -119,11 +129,16 @@ def list_tasks():
         ]
     }
 
+
+# ---------------------------------------------------------------------------
+# Required by OpenEnv spec
+# ---------------------------------------------------------------------------
+
 def main():
     import uvicorn
-    import os
     port = int(os.environ.get("PORT", 7860))
     uvicorn.run("app:app", host="0.0.0.0", port=port)
+
 
 if __name__ == "__main__":
     main()
