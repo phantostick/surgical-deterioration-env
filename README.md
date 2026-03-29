@@ -1,4 +1,11 @@
 # 🏥 Surgical Deterioration Early Warning Environment
+title: Surgical Deterioration Early Warning Environment
+emoji: 🏥
+colorFrom: red
+colorTo: blue
+sdk: docker
+pinned: false
+license: mit
 
 An OpenEnv-compliant environment where an AI agent acts as a clinical early-warning system in a post-surgical ward. The agent monitors patient vitals, detects deterioration before it becomes critical, and decides when to escalate care — balancing sensitivity against specificity.
 
