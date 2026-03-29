@@ -51,7 +51,7 @@ action_space:
   description: "Per-patient action: monitor | call_doctor | rapid_response | order_labs"
 
 server:
-  port: 8000
+  port: 7860
   health_endpoint: /health
   reset_endpoint: /reset
   step_endpoint: /step

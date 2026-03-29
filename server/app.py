@@ -8,6 +8,7 @@ import os
 sys.path.insert(0, "/app")
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import (
@@ -44,14 +45,27 @@ env = SurgicalDeteriorationEnv()
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return {
-        "name": "Surgical Deterioration Early Warning Environment",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": ["/health", "/reset", "/step", "/state", "/grade", "/tasks"]
-    }
+    return """
+    <html>
+    <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px;">
+        <h1>🏥 Surgical Deterioration Early Warning Environment</h1>
+        <p>An OpenEnv-compliant environment for training AI agents to detect 
+        post-surgical patient deterioration early.</p>
+        <h2>Endpoints</h2>
+        <ul>
+            <li><a href="/health">GET /health</a> — Health check</li>
+            <li><a href="/tasks">GET /tasks</a> — List all tasks</li>
+            <li><a href="/state">GET /state</a> — Current episode state</li>
+            <li>POST /reset — Reset environment</li>
+            <li>POST /step — Take action</li>
+            <li>POST /grade — Grade episode</li>
+        </ul>
+        <p><a href="/docs">📖 Interactive API Docs (Swagger)</a></p>
+    </body>
+    </html>
+    """
 
 
 @app.get("/health")
@@ -103,7 +117,6 @@ def state():
 def grade():
     """
     Grade the current episode and return a score 0.0-1.0.
-    Can be called at any time but most meaningful after episode ends.
     """
     try:
         result = env.grade()
