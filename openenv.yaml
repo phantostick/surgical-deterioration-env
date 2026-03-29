@@ -3,9 +3,7 @@ version: "1.0.0"
 description: >
   A post-surgical ward monitoring environment where an AI agent acts as a
   clinical early-warning system. The agent monitors patient vitals, detects
-  deterioration before it becomes critical, and decides when to escalate care —
-  balancing sensitivity (catch every deterioration) against specificity
-  (avoid false alarms that erode clinical trust).
+  deterioration before it becomes critical, and decides when to escalate care.
 
 author: "SAM"
 license: "MIT"
@@ -16,8 +14,6 @@ tasks:
     difficulty: easy
     description: >
       Monitor a single post-surgical patient over 4 hours (8 steps of 30 min).
-      The patient has one clearly deteriorating vital trend. Decide at each step
-      whether to monitor, call the doctor, or activate rapid response.
     max_steps: 8
     reward_range: [0.0, 1.0]
 
@@ -26,8 +22,7 @@ tasks:
     difficulty: medium
     description: >
       Monitor 5 patients over 12 hours (24 steps). One patient is deteriorating
-      subtly across multiple vitals simultaneously. Identify and escalate the
-      correct patient early enough to prevent a critical event.
+      subtly. Identify and escalate the correct patient early.
     max_steps: 24
     reward_range: [0.0, 1.0]
 
@@ -36,9 +31,7 @@ tasks:
     difficulty: hard
     description: >
       Manage a 20-patient post-surgical ward over a 12-hour shift (24 steps).
-      Three patients are deteriorating at different rates. Only one rapid
-      response activation is allowed per hour. False alarms reduce future
-      credibility. Optimize lives saved, early detection, and alarm accuracy.
+      Three patients are deteriorating at different rates.
     max_steps: 24
     reward_range: [0.0, 1.0]
 
@@ -56,3 +49,4 @@ server:
   reset_endpoint: /reset
   step_endpoint: /step
   state_endpoint: /state
+  grade_endpoint: /grade
